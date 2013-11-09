@@ -43,7 +43,8 @@ class SQLCompiler(compiler.SQLCompiler):
         # another run of it.
         if self.connection._DJANGO_VERSION >= 14:
             self.refcounts_before = self.query.alias_refcount.copy()
-        out_cols = self.get_columns(with_col_aliases)
+        # out_cols = self.get_columns(with_col_aliases)
+        out_cols, s_params = self.get_columns(with_col_aliases)
         ordering, ordering_group_by, offset_params = \
             self._get_ordering(out_cols, supports_offset_clause or not do_offset)
 
@@ -55,6 +56,7 @@ class SQLCompiler(compiler.SQLCompiler):
 
         where, w_params = self.query.where.as_sql(qn=qn, connection=self.connection)
         having, h_params = self.query.having.as_sql(qn=qn, connection=self.connection)
+        having_group_by = self.query.having.get_cols()
         params = []
         for val in self.query.extra_select.values():
             params.extend(val[1])
@@ -83,8 +85,8 @@ class SQLCompiler(compiler.SQLCompiler):
                 ordering = self.connection.ops.force_no_ordering()
         elif do_limit:
             result.append('TOP %d' % high_mark)
-
-        result.append(', '.join(out_cols + self.query.ordering_aliases))
+        params.extend(s_params)
+        result.append(', '.join(out_cols + self.ordering_aliases))
 
         params.extend(offset_params)
 
@@ -95,9 +97,10 @@ class SQLCompiler(compiler.SQLCompiler):
         if where:
             result.append('WHERE %s' % where)
             params.extend(w_params)
-
         if self.connection._DJANGO_VERSION >= 15:
-            grouping, gb_params = self.get_grouping(ordering_group_by)
+            grouping, gb_params = self.get_grouping(having_group_by,ordering_group_by)
+        # elif self.connection._DJANGO_VERSION == 15:
+        #     grouping, gb_params = self.get_grouping(ordering_group_by)
         else:
             grouping, gb_params = self.get_grouping()
             if grouping and ordering:
@@ -145,7 +148,8 @@ class SQLCompiler(compiler.SQLCompiler):
 
     def _get_ordering(self, out_cols, allow_aliases=True):
         # SQL Server doesn't support grouping by column number
-        ordering, ordering_group_by = self.get_ordering()
+        # ordering, ordering_group_by = self.get_ordering()
+        ordering, o_params, ordering_group_by = self.get_ordering()
         grouping = []
         for group_by in ordering_group_by:
             try:
